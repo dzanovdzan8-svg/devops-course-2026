@@ -41,7 +41,8 @@ if [[ -n "${DRY_RUN}" ]]; then
 fi
 
 # 5. Проверка доступности с проверкой сертификата
-if curl -fsS --cacert "${CA_CERT}" -o /dev/null "${SITE_URL}/"; then
+# тайм-ауты: при остановленном веб-сервере соединение может не сбрасываться и curl ждал бы бесконечно
+if curl -fsS --connect-timeout 5 --max-time 10 --cacert "${CA_CERT}" -o /dev/null "${SITE_URL}/"; then
     echo "Доставлен коммит $(git rev-parse --short HEAD)"
     exit 0
 else
