@@ -6,7 +6,9 @@ REMOTE="devops"                     # псевдоним из ~/.ssh/config (П�
 REMOTE_DIR="/var/www/devops-site"
 SITE_URL="https://devops.local"
 CA_CERT="${HOME}/devops.crt"
-LOCAL_DIR="$(git rev-parse --show-toplevel)/site/"
+# cd + pwd: в Git для Windows rev-parse возвращает путь вида C:/..., который rsync
+# принимает за адрес удалённого узла «C»; pwd даёт POSIX-путь /c/...
+LOCAL_DIR="$(cd "$(git rev-parse --show-toplevel)" && pwd)/site/"
 
 # 1. Разбор аргумента --dry-run
 DRY_RUN=""
