@@ -196,3 +196,48 @@ server {
 ```
 
 Содержимое доставляется с хоста сценарием `scripts/deploy.sh` (rsync с `--delete --chmod=D755,F644`). На хосте (Git Bash) rsync 3.4.4 установлен из пакетов MSYS2 в `~/bin`; сертификат для проверки — `~/devops.crt` (`scp devops:/etc/ssl/certs/devops.crt ~/devops.crt`).
+
+## 9. Контейнеризация
+
+| Параметр | Значение |
+|---|---|
+| Docker Engine | 29.10.0 из официального репозитория `download.docker.com` (пакеты `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin`); `docker.io` не используется |
+| Compose | плагин `docker compose` v5.8.0 |
+| Участники группы `docker` | `devops` (имеет право sudo; группа `docker` равнозначна root) |
+| DNS контейнеров | `/etc/docker/daemon.json`: `{"dns": ["1.1.1.1", "8.8.8.8"]}` (особенность стенда: резолвер WSL недоступен из сетей Docker) |
+| Проект | `~/app` на сервере (доставка: `rsync -avz --delete --exclude=.env app/ devops:app/`) |
+| Секреты | `~/app/.env`, владелец `devops`, права `600`; создаётся только на сервере из `.env.example` |
+| Публикуемые порты | `127.0.0.1:5000` → `app:5000`; порт СУБД 5432 не публикуется |
+| Тома | `app_db_data` → `/var/lib/postgresql/data` |
+| Сеть | `app_backend` (bridge), имена сервисов `app`, `db` |
+
+```bash
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker devops      # затем новая SSH-сессия
+
+cd ~/app
+cp .env.example .env && chmod 600 .env
+sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/" .env
+docker compose up -d --build
+```
+
+Обратный прокси — в блоке HTTPS `/etc/nginx/sites-available/devops-site` после `error_page`:
+
+```nginx
+    location /app/ {
+        proxy_pass http://127.0.0.1:5000/;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+```
+
+Снимок `05-docker-compose` — 2026-11-17 20:09, `C:\WSL-snapshots\bakiev\05-docker-compose.tar`; снимок `04-nginx-https` — 2026-11-17 19:43.
