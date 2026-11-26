@@ -241,3 +241,39 @@ docker compose up -d --build
 ```
 
 Снимок `05-docker-compose` — 2026-11-17 20:09, `C:\WSL-snapshots\bakiev\05-docker-compose.tar`; снимок `04-nginx-https` — 2026-11-17 19:43.
+
+## 10. Ansible
+
+Проект: каталог `ansible/` репозитория `devops-course-2026` (ветка `feature/ansible`). Запуск — из каталога `ansible/` в домашнем каталоге WSL управляющего узла (не с `/mnt/c`), чтобы подключился `ansible.cfg`.
+
+| Параметр | Значение |
+|---|---|
+| Управляющий узел | WSL `devops-control`, пользователь `bakiev`, ansible-core 2.16.3 |
+| Управляемый узел | `devops-vm` (Ubuntu 24.04), адрес `172.19.233.223`, SSH-порт 22 |
+| Коллекции | ansible.posix 1.6.2, community.docker 4.5.0, community.general 9.5.0 (`requirements.yml`) |
+| inventory bootstrap | `inventory/bootstrap.ini` — пользователь `student`, вход по паролю (только первичный запуск) |
+| inventory prod | `inventory/prod.ini` — пользователь `devops`, ключ `~/.ssh/devops_vm`, sudo без пароля |
+| Образ | `ghcr.io/dzanovdzan8-svg/devops-ci-app` |
+| Тег (полный SHA) | `6cff0b78772c202fafba3e3c60831f628a9b4995` |
+| Порт контейнера | `127.0.0.1:5000 → 5000/tcp`, наружу только через Nginx на 80 |
+| Health endpoint | `http://127.0.0.1:5000/health` на VM, `http://172.19.233.223/health` снаружи, ответ `{"status":"ok"}` |
+
+Роли (`site.yml`, порядок важен):
+
+- `base` — проверка платформы, базовые пакеты (в т. ч. `python3-requests`, `python3-debian`), официальный репозиторий Docker, Docker Engine;
+- `ssh` — пользователь `devops`, открытый ключ, `/etc/sudoers.d/devops` (visudo), `00-ansible-hardening.conf` (вход по паролю и root запрещены), UFW: 22 и 80, deny incoming;
+- `nginx` — reverse proxy на `127.0.0.1:5000`, default site отключён, `nginx -t` перед reload;
+- `app` — загрузка образа по SHA, контейнер `devops-ci-app`, ожидание health.
+
+Команды:
+
+```bash
+cd ~/devops-course-2026/ansible
+ansible-galaxy collection install -r requirements.yml
+# первичный запуск (один раз, пароль student вводится интерактивно)
+ansible-playbook -i inventory/bootstrap.ini site.yml --ask-pass --ask-become-pass
+# повторный запуск (prod.ini по умолчанию, ожидается changed=0)
+ansible-playbook site.yml
+# read-only аудит
+ansible-playbook verify.yml
+```
